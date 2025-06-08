@@ -29,43 +29,61 @@ function AddNewInterview() {
     const [jsonResponse,setJsonResponse]=useState([]);
     const router=useRouter();
     const {user}=useUser();
-    const onSubmit=async(e)=>{
-        setLoading(true)
-        e.preventDefault()
-        console.log(jobPosition,jobDesc,jobExperience);
+    const onSubmit = async (e) => {
+    setLoading(true);
+    e.preventDefault();
 
-        const InputPrompt="Job position: "+jobPosition+", Job Description: "+jobDesc+", Years of Experience : "+jobExperience+" , Depends on Job Position, Job Description & Years of Experience give us "+process.env.NEXT_PUBLIC_INTERVIEW_QUESTION_COUNT+" Interview question along with Answer in JSON format, Give us question and answer field on JSON"
+    const InputPrompt = `Job position: ${jobPosition}, Job Description: ${jobDesc}, Years of Experience: ${jobExperience}. Based on these, give ${process.env.NEXT_PUBLIC_INTERVIEW_QUESTION_COUNT} interview questions with answers in strict JSON format. The response should be a JSON array with each item containing "question" and "answer" fields only.`
 
-        const result=await chatSession.sendMessage(InputPrompt);
-        const MockJsonResp=(result.response.text()).replace('```json','').replace('```','')
-        console.log(JSON.parse(MockJsonResp));
-        setJsonResponse(MockJsonResp);
+    try {
+        const result = await chatSession.sendMessage(InputPrompt);
 
-        if(MockJsonResp)
-        {
-        const resp=await db.insert(MockInterview)
-        .values({
-            mockId:uuidv4(),
-            jsonMockResp:MockJsonResp,
-            jobPosition:jobPosition,
-            jobDesc:jobDesc,
-            jobExperience:jobExperience,
-            createdBy:user?.primaryEmailAddress?.emailAddress,
-            createdAt:moment().format('DD-MM-yyyy')
-        }).returning({mockId:MockInterview.mockId});
+        let rawText = await result.response.text();
+        rawText = rawText
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .trim();
 
-        console.log("Inserted ID:",resp)
-        if(resp)
-        {
-            setOpenDailog(false);
-            router.push('/dashboard/interview/'+resp[0]?.mockId)
+        // Validate and parse JSON
+        let parsedJson;
+        try {
+            parsedJson = JSON.parse(rawText);
+            console.log("Valid JSON parsed", parsedJson);
+        } catch (jsonErr) {
+            console.error("Invalid JSON format from AI:", rawText);
+            alert("Invalid JSON response from AI. Please try again.");
+            setLoading(false);
+            return;
         }
+
+        const mockId = uuidv4();
+
+        const resp = await db.insert(MockInterview).values({
+            mockId: mockId,
+            jsonMockResp: JSON.stringify(parsedJson),
+            jobPosition: jobPosition,
+            jobDesc: jobDesc,
+            jobExperience: jobExperience,
+            createdBy: user?.primaryEmailAddress?.emailAddress,
+            createdAt: moment().format('DD-MM-yyyy')
+        }).returning({ mockId: MockInterview.mockId });
+
+        console.log("Inserted ID:", resp);
+
+        if (resp) {
+            setOpenDailog(false);
+            router.push('/dashboard/interview/' + resp[0]?.mockId);
+        } else {
+            console.error("Failed to insert data");
+        }
+
+    } catch (err) {
+        console.error("Something went wrong:", err);
     }
-    else{
-        console.log("ERROR");
-    }
-        setLoading(false);
-    }
+
+    setLoading(false);
+};
+
   return (
     <div>
         <div className='p-10 border rounded-lg bg-secondary
